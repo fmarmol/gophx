@@ -3,8 +3,6 @@ package gophx
 import (
 	"fmt"
 	"log"
-
-	"github.com/gorilla/websocket"
 )
 
 // DefaultOnJoin ...
@@ -24,7 +22,7 @@ func DefaultOnMessage(payload interface{}) {
 
 // Channel ...
 type Channel struct {
-	socket      *websocket.Conn
+	socket      *Socket
 	topic       Topic
 	OnJoin      func(payload interface{})
 	OnJoinError func(payload interface{})
@@ -47,18 +45,9 @@ func (c *Channel) join(payload interface{}) error {
 	ref := c.nextRef()
 	c.joinRef = ref
 	msg := Message{Topic: c.topic, Payload: payload, Event: JOIN, Ref: ref}
-	if err := c.socket.WriteJSON(msg); err != nil {
+	if err := c.socket.writeJSON(msg); err != nil {
 		return err
 	}
-	// go func() {
-	// 	for {
-	// 		msg := Message{Topic: c.topic, Payload: nil, Event: HEARTBEAT, Ref: ref}
-	// 		if err := c.socket.WriteJSON(msg); err != nil {
-	// 			log.Println("error heartbeat:", err)
-	// 		}
-	// 		time.Sleep(100 * time.Millisecond)
-	// 	}
-	// }()
 	return nil
 }
 

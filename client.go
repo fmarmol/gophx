@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -24,11 +26,24 @@ func DefaultOnConnectError(err error) {
 	log.Printf("error connection: %v\n", err)
 }
 
+// Socket wrapper
+type Socket struct {
+	*websocket.Conn
+	sync.Mutex
+}
+
+func (s *Socket) writeJSON(v interface{}) error {
+	s.Lock()
+	defer s.Unlock()
+	return s.WriteJSON(v)
+}
+
 // Client ...
 type Client struct {
-	socket   *websocket.Conn
+	socket   *Socket
 	channels map[Topic]*Channel
 	config   *ClientConfig
+	sync.Mutex
 }
 
 // ClientConfig ...
@@ -63,6 +78,10 @@ func (c *Client) Connect() error {
 	url := fmt.Sprintf("%v?%v", c.config.URL, params)
 	// TODO: add custom header
 	conn, _, err := websocket.DefaultDialer.Dial(url, http.Header{})
+	if err != nil {
+		return err
+	}
+	c.socket = &Socket{Conn: conn}
 
 	pingHandler := func(appData string) error {
 		log.Println("ping:", appData)
@@ -86,11 +105,25 @@ func (c *Client) Connect() error {
 		return err
 	}
 	c.config.OnConnect()
+
+	// HEARTBEAT PART
+	go func() {
+		msg := Message{Topic: Topic("phoenix"), Event: HEARTBEAT, Payload: "OK"}
+		for {
+			if err := c.socket.writeJSON(msg); err != nil {
+				log.Println("error heartbeat:", err)
+			}
+			time.Sleep(10 * time.Second)
+		}
+	}()
 	go func() {
 		var message Message
 		for {
 			if err := c.socket.ReadJSON(&message); err != nil {
 				panic(err)
+			}
+			if message.Topic == "phoenix" {
+				continue
 			}
 			log.Printf("received: %+v\n", message)
 			channel, ok := c.channels[message.Topic]
@@ -120,7 +153,6 @@ func (c *Client) Connect() error {
 			}
 		}
 	}()
-	c.socket = conn
 	return nil
 }
 
