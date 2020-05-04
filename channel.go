@@ -24,6 +24,7 @@ func DefaultOnMessage(payload interface{}) {
 type Channel struct {
 	socket      *Socket
 	topic       Topic
+	joined      bool
 	OnJoin      func(payload interface{})
 	OnJoinError func(payload interface{})
 	OnMessage   func(payload interface{})

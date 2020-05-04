@@ -38,6 +38,18 @@ func (s *Socket) writeJSON(v interface{}) error {
 	return s.WriteJSON(v)
 }
 
+// HeartBeat ...
+func (s *Socket) HeartBeat(payload interface{}, each time.Duration) {
+	go func() {
+		for {
+			if err := s.writeJSON(payload); err != nil {
+				log.Println("error heartbeat:", err)
+			}
+			time.Sleep(each)
+		}
+	}()
+}
+
 // Client ...
 type Client struct {
 	socket   *Socket
@@ -107,21 +119,15 @@ func (c *Client) Connect() error {
 	c.config.OnConnect()
 
 	// HEARTBEAT PART
-	go func() {
-		msg := Message{Topic: Topic("phoenix"), Event: HEARTBEAT, Payload: "OK"}
-		for {
-			if err := c.socket.writeJSON(msg); err != nil {
-				log.Println("error heartbeat:", err)
-			}
-			time.Sleep(10 * time.Second)
-		}
-	}()
+	// non blocking call
+	c.socket.HeartBeat(Message{Topic: Topic("phoenix"), Event: HEARTBEAT, Payload: "OK"}, 10*time.Second)
 	go func() {
 		var message Message
 		for {
 			if err := c.socket.ReadJSON(&message); err != nil {
 				panic(err)
 			}
+			// phoenix topic is for heartbeat
 			if message.Topic == "phoenix" {
 				continue
 			}
@@ -168,6 +174,9 @@ func Counter() func() int {
 
 // Channel ...
 func (c *Client) Channel(topic string) (*Channel, error) {
+	if _, ok := c.channels[Topic(topic)]; ok {
+		return nil, fmt.Errorf("channel already exists for topic: %v", topic)
+	}
 	channel := &Channel{
 		topic:   Topic(topic),
 		nextRef: Counter(),
